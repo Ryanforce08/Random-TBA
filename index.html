@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Random FRC Team</title>
+    <style>
+      :root {
+        --bg: #333333;
+        --card: #3f3f3f;
+        --ink: #f5f5f5;
+        --muted: #b0b0b0;
+        --accent: #60a5fa;
+        --border: #555555;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        padding: 2rem 1rem;
+        font-family:
+          system-ui,
+          -apple-system,
+          "Segoe UI",
+          Roboto,
+          sans-serif;
+        line-height: 1.55;
+        color: var(--ink);
+        background: var(--bg);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+      }
+
+      body > * {
+        max-width: 32rem;
+        width: 100%;
+      }
+
+      h1 {
+        margin: 0 0 0.25rem;
+        font-size: 1.6rem;
+      }
+
+      body > p {
+        margin: 0.35rem 0;
+        color: var(--muted);
+      }
+
+      input {
+        width: 100%;
+        padding: 0.65rem 0.75rem;
+        font-size: 1rem;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--card);
+        color: var(--ink);
+      }
+
+      input:focus {
+        outline: none;
+        border-color: var(--accent);
+      }
+
+      button {
+        padding: 0.6rem 1rem;
+        font-size: 0.95rem;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--card);
+        color: var(--ink);
+        cursor: pointer;
+      }
+
+      button:hover {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+
+      #goBtn {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #fff;
+        font-weight: 600;
+      }
+
+      #goBtn:hover {
+        color: #fff;
+        opacity: 0.9;
+      }
+
+      button:disabled {
+        opacity: 0.6;
+        cursor: default;
+      }
+
+      #status {
+        min-height: 1.2rem;
+        font-size: 0.9rem;
+        color: var(--muted);
+      }
+
+      #result {
+        margin-top: 0.5rem;
+        padding: 1.25rem;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        text-align: left;
+      }
+
+      #teamNum {
+        margin: 0;
+        font-size: 1.5rem;
+        font-weight: 700;
+      }
+
+      #teamNick {
+        margin: 0.15rem 0 1rem;
+        color: var(--muted);
+      }
+
+      #teamGrid p {
+        margin: 0.3rem 0;
+      }
+
+      #teamLinks {
+        margin-top: 1rem;
+        display: flex;
+        gap: 0.75rem;
+        justify-content: center;
+      }
+
+      a {
+        color: var(--accent);
+        text-decoration: none;
+        font-weight: 600;
+      }
+
+      a:hover {
+        text-decoration: underline;
+      }
+
+      footer {
+        margin-top: 2rem;
+        font-size: 0.85rem;
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Random FRC Team</h1>
+    <p>Simple random team picker from The Blue Alliance</p>
+    <p>Paste your TBA Read API key, then click the button.</p>
+
+    <p>
+      <input
+        id="apiKey"
+        type="password"
+        placeholder="Paste your TBA Read API Key"
+        autocomplete="off"
+      />
+    </p>
+
+    <p>
+      <button id="toggleKey" type="button">Show Key</button>
+      <button id="goBtn" type="button">Get a Random Team</button>
+    </p>
+
+    <p id="status"></p>
+
+    <div id="result" hidden>
+      <p id="teamNum"></p>
+      <p id="teamNick"></p>
+      <div id="teamGrid"></div>
+      <p id="teamLinks"></p>
+    </div>
+
+    <footer>Made by yours truly</footer>
+
+    <script>
+      const TBA_BASE = "https://www.thebluealliance.com/api/v3";
+      const keyInput = document.getElementById("apiKey");
+      const goBtn = document.getElementById("goBtn");
+      const statusEl = document.getElementById("status");
+      const resultEl = document.getElementById("result");
+      const toggleKeyBtn = document.getElementById("toggleKey");
+
+      keyInput.value = localStorage.getItem("tbaKey") || "";
+      keyInput.addEventListener("input", () =>
+        localStorage.setItem("tbaKey", keyInput.value.trim()),
+      );
+
+      toggleKeyBtn.addEventListener("click", () => {
+        keyInput.type = keyInput.type === "password" ? "text" : "password";
+        toggleKeyBtn.textContent =
+          keyInput.type === "password" ? "Show Key" : "Hide Key";
+      });
+
+      function setStatus(msg, isError = false) {
+        statusEl.textContent = msg;
+      }
+
+      async function tbaFetch(path, key) {
+        const res = await fetch(TBA_BASE + path, {
+          headers: { "X-TBA-Auth-Key": key },
+        });
+        if (res.status === 401) {
+          throw new Error("Invalid API key.");
+        }
+        if (!res.ok) {
+          throw new Error("TBA request failed (" + res.status + ").");
+        }
+        return res.json();
+      }
+
+      async function getRandomTeam(key) {
+        let low = 0;
+        let high = 1;
+
+        while (true) {
+          const keys = await tbaFetch("/teams/" + high + "/keys", key);
+          if (keys.length === 0) break;
+          low = high;
+          high *= 2;
+          if (high > 200) break;
+        }
+
+        let lastPage = low;
+        let lo = low;
+        let hi = high;
+        while (lo <= hi) {
+          const mid = Math.floor((lo + hi) / 2);
+          const keys = await tbaFetch("/teams/" + mid + "/keys", key);
+          if (keys.length > 0) {
+            lastPage = Math.max(lastPage, mid);
+            lo = mid + 1;
+          } else {
+            hi = mid - 1;
+          }
+        }
+
+        const page = Math.floor(Math.random() * (lastPage + 1));
+        let keys = await tbaFetch("/teams/" + page + "/keys", key);
+        if (keys.length === 0) {
+          keys = await tbaFetch("/teams/" + lastPage + "/keys", key);
+        }
+
+        const teamKey = keys[Math.floor(Math.random() * keys.length)];
+        return tbaFetch("/team/" + teamKey, key);
+      }
+
+      function renderTeam(t) {
+        document.getElementById("teamNum").textContent =
+          "Team " + t.team_number;
+        document.getElementById("teamNick").textContent =
+          t.nickname || t.name || "";
+
+        const loc = [t.city, t.state_prov, t.country]
+          .filter(Boolean)
+          .join(", ");
+        const grid = document.getElementById("teamGrid");
+        grid.innerHTML = "";
+
+        const rows = [
+          ["Name", t.name],
+          ["Location", loc || "—"],
+          ["Rookie Year", t.rookie_year || "—"],
+          ["School / Sponsor", t.school_name || "—"],
+        ];
+
+        for (const [label, val] of rows) {
+          const row = document.createElement("p");
+
+          const labelEl = document.createElement("strong");
+          labelEl.textContent = label + ": ";
+
+          const valueEl = document.createElement("span");
+          valueEl.textContent = val;
+
+          row.append(labelEl, valueEl);
+          grid.append(row);
+        }
+
+        const links = document.getElementById("teamLinks");
+        links.innerHTML = "";
+
+        const tbaLink = document.createElement("a");
+        tbaLink.href = "https://www.thebluealliance.com/team/" + t.team_number;
+        tbaLink.target = "_blank";
+        tbaLink.rel = "noopener";
+        tbaLink.textContent = "TBA";
+        links.append(tbaLink);
+
+        if (t.website) {
+          const web = document.createElement("a");
+          web.href = t.website;
+          web.target = "_blank";
+          web.rel = "noopener";
+          web.textContent = "Site";
+          links.append(web);
+        }
+
+        resultEl.hidden = false;
+      }
+
+      goBtn.addEventListener("click", async () => {
+        const key = keyInput.value.trim();
+        if (!key) {
+          setStatus("Enter your API key.", true);
+          keyInput.focus();
+          return;
+        }
+
+        goBtn.disabled = true;
+        resultEl.hidden = true;
+        setStatus("Rolling...", false);
+
+        try {
+          const team = await getRandomTeam(key);
+          renderTeam(team);
+          setStatus("Found team " + team.team_number, false);
+        } catch (err) {
+          setStatus(err.message || "Something went wrong.", true);
+        } finally {
+          goBtn.disabled = false;
+        }
+      });
+
+      keyInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") goBtn.click();
+      });
+    </script>
+  </body>
+</html>
